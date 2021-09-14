@@ -16,7 +16,7 @@ import java.util.Map;
 public class ReaxTelegramBot {
 
     public static final boolean DEBUG_MODE = false;
-    public static final String BOT_TOKEN = "1926953834:AAHiblnX2mtYvU2rB3VG9cOkK4sRGKEjFQA";
+    public static String botToken;
 
     public static DataBase dataBase;
     public static TelegramManager telegramManager;
@@ -28,7 +28,13 @@ public class ReaxTelegramBot {
         dataBase = new DataBase();
         if(!dataBase.initDataBase()) return;
 
-        telegramManager = new TelegramManager(BOT_TOKEN);
+        botToken = System.getProperty("token");
+        if (botToken == null) {
+            System.out.println("Add -Dtoken=<api-token>");
+            return;
+        }
+
+        telegramManager = new TelegramManager(botToken);
         new QueryThread("1.5.2", "s2.reaxlab.ru", 54300).start();
         new QueryThread("1.12.2","s2.reaxlab.ru", 54200).start();
 
