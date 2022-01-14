@@ -12,17 +12,28 @@ import com.pengrad.telegrambot.request.AnswerCallbackQuery;
 import com.pengrad.telegrambot.request.DeleteMessage;
 import com.pengrad.telegrambot.request.EditMessageText;
 import com.pengrad.telegrambot.request.SendMessage;
-import ru.alexpshkov.ReaxBot.Minecraft.User;
+import ru.alexpshkov.ReaxBot.DataBase.UserData;
 import ru.alexpshkov.ReaxBot.ReaxTelegramBot;
+import ru.alexpshkov.ReaxBot.Telegram.commands.system.CommandManager;
+import ru.alexpshkov.ReaxBot.Telegram.commands.StartCommand;
+import ru.alexpshkov.ReaxBot.Telegram.commands.system.ITelegramCommand;
+import ru.alexpshkov.ReaxBot.Telegram.messages.DefaultMessages;
+import ru.alexpshkov.ReaxBot.Telegram.messages.MessageUpdateThread;
+import ru.alexpshkov.ReaxBot.Telegram.messages.UpdatableMessage;
 import ru.alexpshkov.ReaxBot.Utils.Logger;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Timer;
 
 public class TelegramManager extends TelegramBot {
+    Timer messageUpdater = new Timer();
+    private final List<UpdatableMessage> updatableMessages = new ArrayList<>();
 
     public TelegramManager(String BOT_TOKEN) {
         super(BOT_TOKEN);
+        messageUpdater.scheduleAtFixedRate(new MessageUpdateThread(this), 0, 5000);
         setUpdatesListener(updates -> {
             updates.forEach(update -> {
                 try {
@@ -37,6 +48,19 @@ public class TelegramManager extends TelegramBot {
             });
             return UpdatesListener.CONFIRMED_UPDATES_ALL;
         });
+    }
+
+    public List<UpdatableMessage> getUpdatableMessages() {
+        return updatableMessages;
+    }
+
+    public void addUpdatableMessage(Runnable updateMethod, int messageId, String chatId,  int amountOfUpdates) {
+        updatableMessages.add(new UpdatableMessage(updateMethod, messageId, chatId, amountOfUpdates));
+    }
+
+    public void removeMessage(UpdatableMessage message) {
+        updatableMessages.remove(message);
+        removeMessage(message.getMessageId(), message.getChatId());
     }
 
     public boolean removeMessage(int messageId, String chatId) {
@@ -80,14 +104,14 @@ public class TelegramManager extends TelegramBot {
     private void onCommandEvent(CallbackQuery callback) {
         String chatId = callback.message().chat().id().toString();
         String[] args = callback.data().split("\\^");
+        UserData userData = ReaxTelegramBot.getTelegramUser(chatId).getUserData();
         if(args[0].equalsIgnoreCase("blackList")) {
-            User user = ReaxTelegramBot.getTelegramUser(chatId).getUser();
-            LinkedList<String> blackList = user.getBlackList();
+            LinkedList<String> blackList = userData.getBlackList();
             if(blackList.contains(args[1])) {
-                editMessage(chatId, callback.message().messageId(), DefaultMessages.MUTE_ALREADY_ENABLE(args[1]));
+                editMessage(chatId, callback.message().messageId(), DefaultMessages.BLACKLIST_ALREADY());
             } else {
-                user.addToBlackList(args[1]);
-                editMessage(chatId, callback.message().messageId(), DefaultMessages.MUTE_ENABLE(args[1]));
+                userData.addToBlackList(args[1]);
+                editMessage(chatId, callback.message().messageId(), DefaultMessages.BLACKLIST_ADD(args[1]));
             }
         }
         execute(new AnswerCallbackQuery(callback.id()));
@@ -97,46 +121,18 @@ public class TelegramManager extends TelegramBot {
         String msg = message.text();
         String chatId = message.chat().id().toString();
         if (!ReaxTelegramBot.isSuchTelegramUser(chatId)) {
-            ReaxTelegramBot.addNewUser(new User(chatId, message.from().username(), "Никогда", new LinkedList<>(), false));
-            if (msg.equalsIgnoreCase("/start"))
-                sendMessage(DefaultMessages.WELCOME_MESSAGE(), chatId);
+            ReaxTelegramBot.addNewUser(new UserData(chatId, message.from().username(), new LinkedList<>(), false, (byte) 0, (byte) 0, new LinkedList<>(), false));
+            new StartCommand("/start").execute(ReaxTelegramBot.getTelegramUser(chatId), null);
         }
         String[] args = msg.split(" ");
+        TelegramUser telegramUser = ReaxTelegramBot.getTelegramUser(chatId);
 
-        if (args[0].startsWith("/")) {
-//            if(args[0].equalsIgnoreCase("/list")) {
-//                sendMessage(DefaultMessages.PLAYERS_LIST(ReaxTelegramBot.getOnlinePlayers()), chatId);
-//                return;
-//            }
-            User user = ReaxTelegramBot.getTelegramUser(chatId).getUser();
-            if(args[0].equalsIgnoreCase("/mute")) {
-                if(args.length == 1) {
-                    if(user.isMute()) {
-                        user.setMute(false);
-                        sendMessage(DefaultMessages.MUTE_DISABLE(), chatId);
-                    } else {
-                        user.setMute(true);
-                        sendMessage(DefaultMessages.MUTE_ENABLE(), chatId);
-                    }
-                } else {
-                    String target = args[1];
-                    LinkedList<String> blackList = user.getBlackList();
-                    if(target.equalsIgnoreCase("list")){
-                        sendMessage(DefaultMessages.BLACK_LIST(blackList), chatId);
-                        return;
-                    }
-                    if(blackList.contains(target)) {
-                        sendMessage(DefaultMessages.MUTE_DISABLE(target), chatId);
-                        user.removeFromBlackList(target);
-                    } else {
-                        sendMessage(DefaultMessages.MUTE_ENABLE(target), chatId);
-                        user.addToBlackList(target);
-                    }
-                }
-                return;
-            }
-            sendMessage(DefaultMessages.NO_SUCH_COMMAND(), chatId);
-        }
+        if (!args[0].startsWith("/")) return;
+        ITelegramCommand telegramCommand = CommandManager.getCommand(args[0]);
+         if (telegramCommand == null) {
+             sendMessage(DefaultMessages.NO_SUCH_COMMAND(), chatId);
+             return;
+         }
+         CommandManager.getCommand(args[0]).execute(telegramUser, args);
     }
-
 }

@@ -1,5 +1,6 @@
 package ru.alexpshkov.ReaxBot.Minecraft;
 
+import ru.alexpshkov.ReaxBot.DataBase.ServerData;
 import ru.alexpshkov.ReaxBot.ReaxTelegramBot;
 import ru.alexpshkov.ReaxBot.Utils.Logger;
 
@@ -10,39 +11,50 @@ import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class QueryThread extends Thread{
+public class ServerQuery extends TimerTask {
 
     private List<String> onlineUsernames;
     private List<String> currentPlayers;
-
-    private final String serverName;
     private final InetSocketAddress queryAddress;
+    private final ServerData serverData;
 
-    public QueryThread(String serverName, String host, int port) {
-        this.queryAddress = new InetSocketAddress(host, port);
-        this.serverName = serverName;
+    /**
+     * Create a thread for checking the server by query requests
+     * @param serverData Server data object
+     */
+    public ServerQuery(ServerData serverData) {
+        this.queryAddress = new InetSocketAddress(serverData.getServerIp(), serverData.getServerPort());
+        this.serverData = serverData;
+    }
+
+    public List<String> getOnlinePlayers() {
+        return onlineUsernames;
+    }
+
+    public ServerData getServerData() {
+        return serverData;
     }
 
     @Override
     public void run() {
-        while(true) {
-            try {
-                Thread.sleep(5000);
-                sendQueryRequest();
-                List<String> newCurrentPlayers = onlineUsernames;
-                if (currentPlayers == null) currentPlayers = newCurrentPlayers;
-                for (String player : newCurrentPlayers)
-                    if (!currentPlayers.contains(player)) ReaxTelegramBot.broadcastPlayerJoin(serverName + " | ", player, newCurrentPlayers);
-                for (String player : currentPlayers)
-                    if (!newCurrentPlayers.contains(player)) ReaxTelegramBot.broadcastPlayerQuit(serverName + " | ", player, newCurrentPlayers);
-                currentPlayers = newCurrentPlayers;
-            } catch (Exception e) {
-                Logger.printError(e);
-            }
+        if(!serverData.isTurnFlag()) return;
+        try {
+            sendQueryRequest();
+            List<String> newCurrentPlayers = onlineUsernames;
+            if (currentPlayers == null) currentPlayers = newCurrentPlayers;
+            for (String player : newCurrentPlayers)
+                if (!currentPlayers.contains(player))
+                    ReaxTelegramBot.onPlayerJoin(player, this);
+            for (String player : currentPlayers)
+                if (!newCurrentPlayers.contains(player))
+                    ReaxTelegramBot.onPlayerQuit(player, this);
+            currentPlayers = newCurrentPlayers;
+        } catch (Exception e) {
+            Logger.printError(e);
         }
     }
 
-    public void sendQueryRequest() {
+    private void sendQueryRequest() {
         InetSocketAddress local = queryAddress;
         try (DatagramSocket socket = new DatagramSocket()) {
             final byte[] receiveData = new byte[10240];
@@ -85,29 +97,28 @@ public class QueryThread extends Thread{
         }
     }
 
-    private final static void sendPacket(DatagramSocket socket, InetSocketAddress targetAddress, byte... data) throws IOException {
+    private static void sendPacket(DatagramSocket socket, InetSocketAddress targetAddress, byte... data) throws IOException {
         DatagramPacket sendPacket = new DatagramPacket(data, data.length, targetAddress.getAddress(), targetAddress.getPort());
         socket.send(sendPacket);
     }
 
-    private final static void sendPacket(DatagramSocket socket, InetSocketAddress targetAddress, int... data) throws IOException {
+    private static void sendPacket(DatagramSocket socket, InetSocketAddress targetAddress, int... data) throws IOException {
         final byte[] d = new byte[data.length];
         int i = 0;
-        for(int j : data)
-            d[i++] = (byte)(j & 0xff);
+        for (int j : data)
+            d[i++] = (byte) (j & 0xff);
         sendPacket(socket, targetAddress, d);
     }
 
-    private final static DatagramPacket receivePacket(DatagramSocket socket, byte[] buffer) throws IOException {
+    private static DatagramPacket receivePacket(DatagramSocket socket, byte[] buffer) throws IOException {
         final DatagramPacket dp = new DatagramPacket(buffer, buffer.length);
         socket.receive(dp);
         return dp;
     }
 
-    private final static String readString(byte[] array, AtomicInteger cursor) {
+    private static String readString(byte[] array, AtomicInteger cursor) {
         final int startPosition = cursor.incrementAndGet();
-        for(; cursor.get() < array.length && array[cursor.get()] != 0; cursor.incrementAndGet())
-            ;
+        for(; cursor.get() < array.length && array[cursor.get()] != 0; cursor.incrementAndGet());
         return new String(Arrays.copyOfRange(array, startPosition, cursor.get()));
     }
 }
