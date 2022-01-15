@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 public class ReaxTelegramBot {
 
     public static final boolean DEBUG_MODE = true;
-    public static String botToken = "1269501894:AAEgcmFDltKS2MbAei79eaEhl_b1xaNQ-4U";
+    public static String botToken;
 
     private static SQLiteDataBase SQLiteDataBase;
     private static TelegramManager telegramManager;
