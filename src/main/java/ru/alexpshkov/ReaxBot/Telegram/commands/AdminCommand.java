@@ -40,10 +40,6 @@ public class AdminCommand extends AbstractTelegramCommand {
 
     @SubCommand(minArgsLength = 2, adminLevelReq = 5, commandInfo = "Посмотреть список всех пользователей")
     public void userList(TelegramUser sender, String[] args) {
-        if (sender.getUserData().getAdministrationLevel() < 5) {
-            sender.sendMessage(DefaultMessages.NO_PERMS((byte) 5));
-            return;
-        }
         StringBuilder userList = new StringBuilder("Список пользователей:");
         ReaxTelegramBot.getAllTelegramUsers().forEach((k, v) -> userList.append("\n  • ").append(v.getUserData().getPlayerName()).append(" | ").append(k));
         sender.sendMessage(userList.toString());
